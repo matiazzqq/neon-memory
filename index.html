@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>NEON MEMORY</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#050510;color:#fff;font-family:'Segoe UI',sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;user-select:none}
+
+/* Header */
+#header{width:100%;max-width:600px;display:flex;justify-content:space-between;align-items:center;padding:10px 20px;margin-bottom:10px;background:rgba(0,20,40,.5);border-radius:10px;border:1px solid rgba(0,255,255,.2)}
+.stat{font-size:18px;font-weight:bold;text-shadow:0 0 5px #0ff}
+.stat span{color:#0ff}
+
+/* Game Board Container */
+#game-container{perspective:1000px;width:95vw;max-width:600px;display:flex;justify-content:center;align-items:center}
+#board{display:grid;gap:10px;width:100%;aspect-ratio:1/1; /* Square board by default, adjusted via JS cols */}
+
+/* Card Styles */
+.card{position:relative;width:100%;height:100%;cursor:pointer;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.4,2,.6,1)}
+.card.flipped{transform:rotateY(180deg)}
+.card.matched{pointer-events:none;opacity:.7;filter:brightness(1.2)}
+
+.card-face{position:absolute;width:100%;height:100%;backface-visibility:hidden;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:40px;border:2px solid transparent;box-shadow:0 4px 10px rgba(0,0,0,.5)}
+
+/* Back of card */
+.card-back{background:linear-gradient(135deg,#1a1a2e,#16213e);border-color:rgba(0,255,255,.3)}
+.card-back::after{content:'?';color:#0ff;font-size:30px;opacity:.5}
+
+/* Front of card */
+.card-front{transform:rotateY(180deg);background:#0f0f1a;border-color:#333}
+.symbol{width:60%;height:60%;display:flex;align-items:center;justify-content:center}
+
+/* Symbol Shapes & Colors */
+.sym-circle{border-radius:50%;background:#ff0055;box-shadow:0 0 15px #ff0055}
+.sym-square{border-radius:5px;background:#00ccff;box-shadow:0 0 15px #00ccff}
+.sym-triangle{clip-path:polygon(50% 0%, 0% 100%, 100% 100%);background:#ffee00;box-shadow:0 0 15px #ffee00}
+.sym-star{clip-path:polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);background:#aa00ff;box-shadow:0 0 15px #aa00ff}
+.sym-diamond{clip-path:polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);background:#00ff88;box-shadow:0 0 15px #00ff88}
+.sym-hex{clip-path:polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);background:#ff8800;box-shadow:0 0 15px #ff8800}
+
+/* Overlays */
+.overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}
+h1{font-size:min(10vw,50px);color:#0ff;text-shadow:0 0 20px #0ff;margin-bottom:10px;letter-spacing:2px}
+p{color:#ccc;font-size:18px;margin-bottom:30px;line-height:1.5}
+.btn-group{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn{padding:12px 24px;font-size:16px;font-weight:bold;color:#000;background:#0ff;border:none;border-radius:8px;cursor:pointer;transition:.2s;text-transform:uppercase;min-width:120px}
+.btn:hover{transform:scale(1.05);box-shadow:0 0 20px #0ff}
+.btn.sec{background:transparent;border:2px solid #0ff;color:#0ff}
+.btn.sec:hover{background:rgba(0,255,255,.1)}
+.hidden{display:none!important}
+
+#win-screen h1{color:#0f0;text-shadow:0 0 20px #0f0}
+#lose-screen h1{color:#f00;text-shadow:0 0 20px #f00}
+.final-score{font-size:40px;color:#ffd700;margin:20px 0;text-shadow:0 0 10px #ffd700}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="stat">⏱ Time: <span id="timeVal">0</span>s</div>
+  <div class="stat"> Moves: <span id="movesVal">0</span></div>
+  <div class="stat">⭐ Score: <span id="scoreVal">0</span></div>
+</div>
+
+<!-- GAME BOARD -->
+<div id="game-container">
+  <div id="board"></div>
+</div>
+
+<!-- START MENU -->
+<div id="menu" class="overlay">
+  <h1>NEON MEMORY</h1>
+  <p>Найди все пары символов.<br>Чем быстрее — тем выше балл.</p>
+  <div class="btn-group">
+    <button class="btn" onclick="startGame('easy')">Легко (4x3)</button>
+    <button class="btn sec" onclick="startGame('medium')">Нормально (4x4)</button>
+    <button class="btn sec" style="border-color:#f00;color:#f00" onclick="startGame('hard')">Хардкор (6x4)</button>
+  </div>
+</div>
+
+<!-- WIN SCREEN -->
+<div id="win-screen" class="overlay hidden">
+  <h1>ПОБЕДА!</h1>
+  <div class="final-score" id="winScore">0</div>
+  <p>Отличная память!</p>
+  <button class="btn" onclick="location.reload()">Играть снова</button>
+</div>
+
+<!-- LOSE SCREEN (Time out) -->
+<div id="lose-screen" class="overlay hidden">
+  <h1>ВРЕМЯ ВЫШЛО</h1>
+  <p>Попробуй сосредоточиться лучше.</p>
+  <button class="btn" onclick="location.reload()">Заново</button>
+</div>
+
+<script>
+// === AUDIO ENGINE ===
+let audioCtx = null;
+function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, type, duration, vol = 0.1) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+const SFX = {
+    flip: () => { playTone(600, 'triangle', 0.1, 0.05); },
+    match: () => { 
+        playTone(800, 'sine', 0.1, 0.1); 
+        setTimeout(()=>playTone(1200,'sine',0.2,0.1), 100); 
+    },
+    fail: () => { playTone(200, 'sawtooth', 0.2, 0.1); },
+    win: () => { 
+        [400, 500, 600, 800].forEach((f, i) => setTimeout(() => playTone(f, 'square', 0.2, 0.1), i*150)); 
+    }
+};
+
+// === GAME CONFIG ===
+const SYMBOLS = ['circle', 'square', 'triangle', 'star', 'diamond', 'hex'];
+const LEVELS = {
+    easy:   { cols: 4, rows: 3, pairs: 6, timeLimit: 60 },
+    medium: { cols: 4, rows: 4, pairs: 8, timeLimit: 90 },
+    hard:   { cols: 6, rows: 4, pairs: 12, timeLimit: 120 }
+};
+
+let currentLevel = 'easy';
+let cards = []; // Array of card objects {id, symbol, matched}
+let flippedCards = []; // Currently open cards (max 2)
+let moves = 0;
+let score = 0;
+let startTime = 0;
+let timerInterval = null;
+let isLocked = false; // Prevent clicking during animations/mismatch delay
+
+// DOM Elements
+const boardEl = document.getElementById('board');
+const timeEl = document.getElementById('timeVal');
+const movesEl = document.getElementById('movesVal');
+const scoreEl = document.getElementById('scoreVal');
+const menuEl = document.getElementById('menu');
+const winEl = document.getElementById('win-screen');
+const loseEl = document.getElementById('lose-screen');
+const winScoreEl = document.getElementById('winScore');
+
+// Initialize Game
+function startGame(levelKey) {
+    initAudio();
+    currentLevel = levelKey;
+    const config = LEVELS[levelKey];
+    
+    // Reset State
+    cards = [];
+    flippedCards = [];
+    moves = 0;
+    score = 0;
+    isLocked = false;
+    startTime = Date.now();
+    
+    // Update UI
+    menuEl.classList.add('hidden');
+    winEl.classList.add('hidden');
+    loseEl.classList.add('hidden');
+    updateStats();
+    
+    // Setup Grid CSS
+    boardEl.style.gridTemplateColumns = `repeat(${config.cols}, 1fr)`;
+    boardEl.innerHTML = '';
+
+    // Generate Pairs
+    let deck = [];
+    for (let i = 0; i < config.pairs; i++) {
+        const sym = SYMBOLS[i % SYMBOLS.length];
+        deck.push({ id: i * 2, symbol: sym });
+        deck.push({ id: i * 2 + 1, symbol: sym });
+    }
+    
+    // Shuffle Deck (Fisher-Yates)
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+
+    // Create Cards in DOM
+    deck.forEach(cardData => {
+        const cardObj = { ...cardData, matched: false };
+        cards.push(cardObj);
+        
+        const cardEl = document.createElement('div');
+        cardEl.className = 'card';
+        cardEl.dataset.id = cardObj.id;
+        
+        // Inner faces
+        const backFace = document.createElement('div');
+        backFace.className = 'card-face card-back';
+        
+        const frontFace = document.createElement('div');
+        frontFace.className = 'card-face card-front';
+        
+        const symbolDiv = document.createElement('div');
+        symbolDiv.className = `symbol sym-${cardObj.symbol}`;
+        frontFace.appendChild(symbolDiv);
+        
+        cardEl.appendChild(backFace);
+        cardEl.appendChild(frontFace);
+        
+        cardEl.addEventListener('click', () => handleCardClick(cardObj.id));
+        
+        boardEl.appendChild(cardEl);
+    });
+
+    // Start Timer
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(updateTimer, 1000);
+}
+
+function handleCardClick(id) {
+    if (isLocked) return;
+    
+    const cardIndex = cards.findIndex(c => c.id === id);
+    const card = cards[cardIndex];
+    
+    // Ignore if already matched or currently flipped
+    if (card.matched || flippedCards.includes(card)) return;
+    
+    // Flip Visual
+    const el = document.querySelector(`.card[data-id="${id}"]`);
+    el.classList.add('flipped');
+    SFX.flip();
+    
+    // Logic
+    flippedCards.push(card);
+    
+    if (flippedCards.length === 2) {
+        moves++;
+        updateStats();
+        checkMatch();
+    }
+}
+
+function checkMatch() {
+    isLocked = true; // Lock input while checking
+    
+    const [c1, c2] = flippedCards;
+    
+    if (c1.symbol === c2.symbol) {
+        // MATCH!
+        setTimeout(() => {
+            c1.matched = true;
+            c2.matched = true;
+            
+            // Mark visually
+            const el1 = document.querySelector(`.card[data-id="${c1.id}"]`);
+            const el2 = document.querySelector(`.card[data-id="${c2.id}"]`);
+            el1.classList.add('matched');
+            el2.classList.add('matched');
+            
+            SFX.match();
+            
+            // Calculate Score Bonus based on speed/memory
+            const elapsed = (Date.now() - startTime) / 1000;
+            const bonus = Math.max(0, 100 - Math.floor(elapsed));
+            score += 100 + bonus;
+            updateStats();
+            
+            flippedCards = [];
+            isLocked = false;
+            
+            // Check Win Condition
+            if (cards.every(c => c.matched)) {
+                endGame(true);
+            }
+        }, 500);
+    } else {
+        // NO MATCH
+        setTimeout(() => {
+            const el1 = document.querySelector(`.card[data-id="${c1.id}"]`);
+            const el2 = document.querySelector(`.card[data-id="${c2.id}"]`);
+            el1.classList.remove('flipped');
+            el2.classList.remove('flipped');
+            SFX.fail();
+            
+            flippedCards = [];
+            isLocked = false;
+        }, 1000);
+    }
+}
+
+function updateTimer() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const limit = LEVELS[currentLevel].timeLimit;
+    const remaining = limit - elapsed;
+    
+    timeEl.innerText = remaining > 0 ? remaining : 0;
+    
+    if (remaining <= 0) {
+        endGame(false);
+    }
+}
+
+function updateStats() {
+    movesEl.innerText = moves;
+    scoreEl.innerText = score;
+}
+
+function endGame(win) {
+    clearInterval(timerInterval);
+    isLocked = true;
+    
+    if (win) {
+        SFX.win();
+        // Final Score Calculation
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const timeBonus = Math.max(0, (LEVELS[currentLevel].timeLimit - elapsed) * 10);
+        const finalScore = score + timeBonus;
+        
+        winScoreEl.innerText = finalScore;
+        winEl.classList.remove('hidden');
+    } else {
+        loseEl.classList.remove('hidden');
+    }
+}
+
+// Initial Draw
+updateStats();
+
+</script>
+</body>
+</html>
